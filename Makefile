@@ -5,7 +5,7 @@ DEPS=my_malloc.h
 all: lib
 
 lib: my_malloc.o
-	$(CC) $(CFLAGS)  -o -shared  libmymalloc.so my_malloc.o
+	$(CC) $(CFLAGS) -shared -o   libmymalloc.so my_malloc.o
 
 %.o: %.c my_malloc.h
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -16,3 +16,5 @@ clean:
 clobber:
 	rm -f *~ *.o
 
+v:
+	valgrind --leak-check=full --track-origins=yes ./libmymalloc.so

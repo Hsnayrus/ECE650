@@ -18,7 +18,7 @@ void printLLBack(mmalloc * tailPtr);
 //helper function for adding to free linked linst
 void addSortedFree(mmalloc * ptrToAdd);
 //Merges adjacent free regions
-void mergeFreeList();
+size_t mergeFreeList(mmalloc * newNode);
 unsigned long get_data_segment_size();
 unsigned long get_data_segment_free_space_size();
 void * reusebf_malloc(size_t noBytes);

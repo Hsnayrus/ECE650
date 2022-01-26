@@ -95,33 +95,56 @@ void * bf_malloc(size_t noBytes) {
 void addSortedFree(mmalloc * ptrToAdd) {
   allocatedBytes = allocatedBytes - ptrToAdd->blockSize;
   freeBytes = freeBytes + ptrToAdd->blockSize;
-  if (freeListHead == NULL) {
-    freeListHead = ptrToAdd;
-    freeListTail = freeListHead;
-    freeListHead->prev = NULL;
-    return;
-  }
-  if (ptrToAdd < freeListHead) {
-    ptrToAdd->prev = NULL;
-    freeListHead->prev = ptrToAdd;
-    ptrToAdd->next = freeListHead;
-    freeListHead = ptrToAdd;
-    return;
-  }
-  if (ptrToAdd > freeListTail) {
+  size_t value = mergeFreeList(ptrToAdd);
+  if (value == 0) {
+    ptrToAdd->next = NULL;
     ptrToAdd->prev = freeListTail;
-    freeListTail->next = ptrToAdd;
     freeListTail = ptrToAdd;
-    return;
+    if (freeListHead == NULL) {
+      freeListHead = freeListTail;
+    }
+    else {
+      freeListTail->prev->next = freeListTail;
+    }
   }
-  mmalloc * temp = freeListHead->next;
-  while (temp < ptrToAdd) {
-    temp = temp->next;
-  }
-  (temp->prev)->next = ptrToAdd;
-  ptrToAdd->prev = temp->prev;
-  temp->prev = ptrToAdd;
-  ptrToAdd->next = temp;
+  /* mmalloc * temp = freeListHead; */
+  /* while (temp->next != NULL && temp->next < ptrToAdd) { */
+  /*   temp = temp->next; */
+  /* } */
+  /* ptrToAdd->next = temp->next; */
+  /* if (temp->next != NULL) { */
+  /*   ptrToAdd->next->prev = ptrToAdd; */
+  /* } */
+
+  /* temp->next = ptrToAdd; */
+  /* ptrToAdd->prev = temp; */
+  /* while (temp->next != NULL) { */
+  /*   temp = temp->next; */
+  /* } */
+  /* freeListTail = temp; */
+
+  /* if (freeListHead == NULL) { */
+  /*   freeListHead = ptrToAdd; */
+  /*   freeListTail = freeListHead; */
+  /*   freeListHead->prev = NULL; */
+  /*   return; */
+  /* } */
+  /* if (ptrToAdd < freeListHead->next) { */
+  /*   ptrToAdd->prev = NULL; */
+  /*   freeListHead->prev = ptrToAdd; */
+  /*   ptrToAdd->next = freeListHead; */
+  /*   freeListHead = ptrToAdd; */
+  /*   return; */
+  /* } */
+  /* if (ptrToAdd > freeListTail) { */
+  /*   ptrToAdd->prev = freeListTail; */
+  /*   freeListTail->next = ptrToAdd; */
+  /*   freeListTail = ptrToAdd; */
+  /*   return; */
+  /* } */
+  /* ptrToAdd->next = freeListHead; */
+  /* ptrToAdd->prev = NULL; */
+  /* freeListHead = ptrToAdd; */
 }
 
 void bf_free(void * ptrToDeleteVoid) {
@@ -152,7 +175,6 @@ void bf_free(void * ptrToDeleteVoid) {
   }
   ++freeBlocks;
   addSortedFree(ptrToDelete);
-  mergeFreeList();
 }
 
 void printLLFront(mmalloc * headPtr) {
@@ -186,30 +208,51 @@ void printLLBack(mmalloc * tailPtr) {
   tailPtr = temp;
 }
 
-void mergeFreeList() {
+size_t mergeFreeList(mmalloc * newNode) {
   mmalloc * temp = freeListHead;
-  while (temp != NULL && temp->next != NULL) {
-    void * ptr1 = temp;
-    void * ptr2 = temp->next;
-    if ((ptr2 - ptr1) == temp->blockSize) {
-      --freeBlocks;
-      temp->blockSize += temp->next->blockSize;
-      mmalloc ** newPtr = &((temp->next)->next);
-      temp->next = *newPtr;
-      if (*newPtr != NULL) {
-        (*newPtr)->prev = NULL;
-        (*newPtr) = NULL;
-      }
+  void * tempVoid = temp;
+  void * newNodeVoid = newNode;
+  while (temp != NULL) {
+    size_t value = 0;
+    if (tempVoid > newNodeVoid) {
+      value = tempVoid - newNodeVoid;
+      /* printf("The value is %lu\n", value); */
+    }
+    else {
+      value = newNodeVoid - tempVoid;
+      /* printf("The value is %lu in the else block\n", value); */
+    }
+    if (value == temp->blockSize) {
+      temp->blockSize += newNode->blockSize;
+      return 1;
     }
     temp = temp->next;
   }
-  if (freeListHead->blockSize == freeBytes) {
-    freeListTail = freeListHead;
-  }
+  return 0;
+
+  /* mmalloc * temp = freeListHead; */
+  /* while (temp != NULL && temp->next != NULL) { */
+  /*   void * ptr1 = temp; */
+  /*   void * ptr2 = temp->next; */
+  /*   if ((ptr2 - ptr1) == temp->blockSize) { */
+  /*     --freeBlocks; */
+  /*     temp->blockSize += temp->next->blockSize; */
+  /*     mmalloc ** newPtr = &((temp->next)->next); */
+  /*     temp->next = *newPtr; */
+  /*     if (*newPtr != NULL) { */
+  /*       (*newPtr)->prev = NULL; */
+  /*       (*newPtr) = NULL; */
+  /*     } */
+  /*   } */
+  /*   temp = temp->next; */
+  /* } */
+  /* if (freeListHead->blockSize == freeBytes) { */
+  /*   freeListTail = freeListHead; */
+  /* } */
 }
 
 void * ff_malloc(size_t noBytes) {
-  if (freeListHead != NULL && (noBytes < (freeListHead->blockSize) - sizeof(mmalloc))) {
+  if (freeListHead != NULL && (noBytes < ((freeListHead->blockSize) - sizeof(mmalloc)))) {
     mmalloc * result = NULL;
     result = freeListHead;
 
@@ -255,7 +298,6 @@ void ff_free(void * ptrToDeleteVoid) {
   }
   ++freeBlocks;
   addSortedFree(ptrToDelete);
-  mergeFreeList();
 }
 
 /* int main() { */
@@ -264,9 +306,9 @@ void ff_free(void * ptrToDeleteVoid) {
 /*   void * ptr3 = bf_malloc(300); */
 /*   void * ptr4 = bf_malloc(400); */
 /*   void * ptr5 = bf_malloc(500); */
-/*   ff_free(ptr1); */
-/*   ff_free(ptr3); */
-/*   ff_free(ptr5); */
+/*   bf_free(ptr1); */
+/*   bf_free(ptr3); */
+/*   bf_free(ptr5); */
 /*   void * ptr6 = bf_malloc(20); */
 /*   printLLFront(head); */
 /*   void * ptr7 = bf_malloc(40); */
@@ -295,19 +337,3 @@ void ff_free(void * ptrToDeleteVoid) {
 /*   /\*   printf("HELL YES"); *\/ */
 /*   /\* } *\/ */
 /* } */
-
-/* mmalloc * temp = freeListHead; */
-/* while (temp->next != NULL && temp->next < ptrToAdd) { */
-/*   temp = temp->next; */
-/* } */
-/* ptrToAdd->next = temp->next; */
-/* if (temp->next != NULL) { */
-/*   ptrToAdd->next->prev = ptrToAdd; */
-/* } */
-
-/* temp->next = ptrToAdd; */
-/* ptrToAdd->prev = temp; */
-/* while (temp->next != NULL) { */
-/*   temp = temp->next; */
-/* } */
-/* freeListTail = temp; */
