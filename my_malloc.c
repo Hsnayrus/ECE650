@@ -1,16 +1,12 @@
 #include "my_malloc.h"
 
 #include <stdlib.h>
-//Include shared in the Makefile
 
-//Global variables declared here
-mmalloc * head = NULL;
-mmalloc * tail = NULL;
 size_t allocatedBytes = 0;
 size_t freeBytes = 0;
-size_t freeBlocks = 0;
-mmalloc * freeListHead = NULL;
-mmalloc * freeListTail = NULL;
+
+mmalloc * fHead = NULL;
+mmalloc * fTail = NULL;
 
 unsigned long get_data_segment_size() {
   return allocatedBytes;
@@ -20,320 +16,219 @@ unsigned long get_data_segment_free_space_size() {
   return freeBytes;
 }
 
-void purify(mmalloc * result) {
-  if (result == freeListHead) {
-    freeListHead = result->next;
-    if (result->next != NULL)
-      result->next->prev = NULL;
-  }
-  else if (result == freeListTail) {
-    freeListTail = result->prev;
-    if (result->prev != NULL)
-      result->prev->next = NULL;
-  }
-  else {
-    result->prev->next = result->next;
-    result->next->prev = result->prev;
-    result->next = NULL;
-    result->prev = NULL;
-  }
-}
-
+/*
+This function determines whether a block from the freeList can be used or not.
+It assumes that the pointer in the free linked list is one with metadata attached to it.
+If it can then it returns the original pointer with the metadata information
+the metadata size is to be calculate in the bf_malloc function.
+ */
 void * reusebf_malloc(size_t noBytes) {
-  mmalloc * temp = freeListHead;
-  size_t smallest = freeBytes + 2;
+  if (fHead == NULL) {
+    printf("This is a corner case. It means that noBytes < freeBytes was evaluated to "
+           "true and fHead is empty. Please check add to free list function(guess)\n");
+    return NULL;
+  }
+  size_t valMmalloc = sizeof(mmalloc);
+  mmalloc * temp = fHead;
+  size_t smallest = 0;
   mmalloc * result = NULL;
   size_t value = 0;
   while (temp != NULL) {
-    value = temp->blockSize - noBytes - 24;
-    if (value < smallest) {
-      smallest = value;
-      result = temp;
-      /* printf("$vlaue: %lu\n", (result)->blockSize); */
+    if ((temp->blockSize - valMmalloc) >= noBytes) {
+      value = temp->blockSize;
+      if (value < smallest) {
+        smallest = value;
+        result = temp;
+      }
     }
     temp = temp->next;
   }
-  if (smallest == freeBytes + 2) {
-    return NULL;
-  }
-  purify(result);
   return result;
 }
 
-void addToMalloc(mmalloc * newNode) {
-  newNode->next = NULL;
-  newNode->prev = tail;
-  tail = newNode;
-  if (head == NULL) {
-    head = tail;
+/*
+  This method basically clears ensures proper removal of this pointer 
+  and splits the memory block if necessary
+*/
+void * splitBlocks(mmalloc * ptrToPurify, size_t noBytes) {
+  void * pTPVoid = ptrToPurify;
+  if (ptrToPurify->blockSize + (2 * sizeof(mmalloc)) > noBytes) {
+    void * tempVoid = pTPVoid + sizeof(mmalloc) + 1;
+    printf("************%p, %lu:\n", tempVoid, ptrToPurify->blockSize);
   }
-  else {
-    tail->prev->next = tail;
-  }
+  return NULL;
 }
 
+/*
+This function returns either a new block if the noBytes requested
+is less than the freeBlocks
+Else it creates a new block by sbrk system call
+The data address after incrementing it with sizeof(mmalloc) is returned
+*/
 void * bf_malloc(size_t noBytes) {
-  void * result = reusebf_malloc(noBytes);
-  if (result == NULL) {
-    mmalloc * newNode = sbrk(noBytes + sizeof(mmalloc));
-    newNode->blockSize = noBytes + sizeof(mmalloc);
-    addToMalloc(newNode);
-    allocatedBytes += tail->blockSize;
-    void * anotherOne = tail;
-    /* printf("result is: %p", anotherOne + sizeof(mmalloc) + 1); */
-    return anotherOne + sizeof(mmalloc);
-    /* return anotherOne; */
-  }
-  mmalloc * resPtr = result;
-  freeBytes -= resPtr->blockSize;
-  /* printf("result is: %p", result + sizeof(mmalloc) + 1); */
-  addToMalloc(result);
-  return result + sizeof(mmalloc);
-  /* return result; */
-}
-
-void addSortedFree(mmalloc * ptrToAdd) {
-  allocatedBytes = allocatedBytes - ptrToAdd->blockSize;
-  freeBytes = freeBytes + ptrToAdd->blockSize;
-  size_t value = mergeFreeList(ptrToAdd);
-  if (value == 0) {
-    ptrToAdd->next = NULL;
-    ptrToAdd->prev = freeListTail;
-    freeListTail = ptrToAdd;
-    if (freeListHead == NULL) {
-      freeListHead = freeListTail;
-    }
-    else {
-      freeListTail->prev->next = freeListTail;
-    }
-  }
-  /* mmalloc * temp = freeListHead; */
-  /* while (temp->next != NULL && temp->next < ptrToAdd) { */
-  /*   temp = temp->next; */
+  /* if (noBytes < freeBytes) { */
+  /*   void * result = reusebf_malloc(noBytes); */
+  /*   result = splitBlocks(result, noBytes); */
   /* } */
-  /* ptrToAdd->next = temp->next; */
-  /* if (temp->next != NULL) { */
-  /*   ptrToAdd->next->prev = ptrToAdd; */
-  /* } */
-
-  /* temp->next = ptrToAdd; */
-  /* ptrToAdd->prev = temp; */
-  /* while (temp->next != NULL) { */
-  /*   temp = temp->next; */
-  /* } */
-  /* freeListTail = temp; */
-
-  /* if (freeListHead == NULL) { */
-  /*   freeListHead = ptrToAdd; */
-  /*   freeListTail = freeListHead; */
-  /*   freeListHead->prev = NULL; */
-  /*   return; */
-  /* } */
-  /* if (ptrToAdd < freeListHead->next) { */
-  /*   ptrToAdd->prev = NULL; */
-  /*   freeListHead->prev = ptrToAdd; */
-  /*   ptrToAdd->next = freeListHead; */
-  /*   freeListHead = ptrToAdd; */
-  /*   return; */
-  /* } */
-  /* if (ptrToAdd > freeListTail) { */
-  /*   ptrToAdd->prev = freeListTail; */
-  /*   freeListTail->next = ptrToAdd; */
-  /*   freeListTail = ptrToAdd; */
-  /*   return; */
-  /* } */
-  /* ptrToAdd->next = freeListHead; */
-  /* ptrToAdd->prev = NULL; */
-  /* freeListHead = ptrToAdd; */
-}
-
-void bf_free(void * ptrToDeleteVoid) {
-  //This function will work considering the bf_malloc function makes
-  //a properly functioning linkedlist
-  /* mmalloc * ptrToDelete = (ptrToDeleteVoid - sizeof(mmalloc) - 1); */
-  ptrToDeleteVoid -= sizeof(mmalloc);
-  mmalloc * ptrToDelete = ptrToDeleteVoid;
-  if (ptrToDelete->next == NULL && ptrToDelete->prev == NULL) {
-    head = NULL;
-    tail = NULL;
-  }
-  else if (ptrToDelete->next == NULL) {
-    tail = ptrToDelete->prev;
-    ptrToDelete->prev->next = NULL;
-    ptrToDelete->prev = NULL;
-  }
-  else if (ptrToDelete->prev == NULL) {
-    head = ptrToDelete->next;
-    ptrToDelete->next->prev = NULL;
-    ptrToDelete->next = NULL;
-  }
-  else {
-    ptrToDelete->next->prev = ptrToDelete->prev;
-    ptrToDelete->prev->next = ptrToDelete->next;
-    ptrToDelete->next = NULL;
-    ptrToDelete->prev = NULL;
-  }
-  ++freeBlocks;
-  addSortedFree(ptrToDelete);
-}
-
-void printLLFront(mmalloc * headPtr) {
-  mmalloc * temp = headPtr;
-  printf("******************In printLL Front******************\n");
-  size_t i = 0;
-  while (temp != NULL) {
-    printf("\t\t\t%p\n", temp);
-    printf("Data allocated here is: %lu\n", temp->blockSize);
-    if (temp->prev == NULL) {
-      printf("Yep its null\n");
-    }
-    else {
-      printf("Its not null: %lu\n", temp->prev->blockSize);
-    }
-    temp = temp->next;
-    ++i;
-  }
-  headPtr = temp;
-}
-
-void printLLBack(mmalloc * tailPtr) {
-  mmalloc * temp = tailPtr;
-  printf("******************In printLL Back******************\n");
-  size_t i = 0;
-  while (tailPtr != NULL) {
-    printf("Data allocated from the back here is: %lu\n", tailPtr->blockSize);
-    tailPtr = tailPtr->prev;
-    ++i;
-  }
-  tailPtr = temp;
-}
-
-size_t mergeFreeList(mmalloc * newNode) {
-  mmalloc * temp = freeListHead;
-  void * tempVoid = temp;
+  mmalloc * newNode = sbrk(noBytes + sizeof(mmalloc));
+  newNode->blockSize = noBytes + sizeof(mmalloc);
+  allocatedBytes += noBytes;
   void * newNodeVoid = newNode;
+  return (newNodeVoid + sizeof(mmalloc));
+}
+
+/*
+  This function is supposed to merge the pointer that is to
+  be added to the linked list with any adjacent pointers that 
+  are already present in the free linked list.
+  This function assumes that the parameter contains the metadata
+  in the blocksize
+*/
+
+size_t tryMerge(mmalloc * ptrToMerge) {
+  printf("Coming in tryMerge\n");
+  mmalloc * temp = fHead;
+  void * tempVoid;
+  void * ptrVoid = ptrToMerge;
+  void * smallerVoid;
+  void * biggerVoid;
+  mmalloc * smallerM;
+  mmalloc * biggerM;
+  size_t result = 0;
+  size_t value = 0;
   while (temp != NULL) {
-    size_t value = 0;
-    if (tempVoid > newNodeVoid) {
-      value = tempVoid - newNodeVoid;
-      /* printf("The value is %lu\n", value); */
+    tempVoid = temp;
+    if (tempVoid > ptrVoid) {
+      smallerVoid = ptrVoid;
+      biggerVoid = tempVoid;
+    }
+    else if (tempVoid == ptrVoid) {
+      printf("This is an error case. This statement should never be printed. But if it "
+             "is then there is something wrong with the pointer address manipulation.\n");
     }
     else {
-      value = newNodeVoid - tempVoid;
-      /* printf("The value is %lu in the else block\n", value); */
+      smallerVoid = tempVoid;
+      biggerVoid = ptrVoid;
     }
-    if (value == temp->blockSize) {
-      temp->blockSize += newNode->blockSize;
-      return 1;
+    smallerM = (mmalloc *)smallerVoid;
+    biggerM = (mmalloc *)biggerVoid;
+    value = biggerVoid - smallerVoid;
+    printf("Bigger is: %p, smaller is: %p\n", biggerVoid, smallerVoid);
+    if (value == smallerM->blockSize) {
+      /*
+        Case in which smallerM is in the linked list.
+        Since smallerM is supposed to "absorb" biggerM,
+        we don't have to manipulate biggerM's pointers, 
+        since they are NULL.
+        We just increase smallerM's blockSize
+      */
+      if (smallerM != ptrToMerge) {
+        smallerM->blockSize = smallerM->blockSize + biggerM->blockSize;
+      }
+      /*
+        Case in which smallerM is not in the linked list.
+        It is actually the ptr that is supposed to be merged.
+        Hence, we just assign bigger's pointers to smaller and
+        then replace bigger's place in the linked list with smaller.
+        Set it to temp and we increment its blockSize.
+      */
+      else {
+        smallerM->prev = biggerM->prev;
+        smallerM->next = biggerM->next;
+        if (biggerM->prev != NULL) {
+          biggerM->prev->next = smallerM;
+        }
+        else {
+          fHead = smallerM;
+        }
+        if (biggerM->next != NULL) {
+          biggerM->next->prev = smallerM;
+        }
+        else {
+          fTail = smallerM;
+        }
+        biggerM->next = NULL;
+        biggerM->prev = NULL;
+        temp = smallerM;
+        smallerM->blockSize += biggerM->blockSize;
+      }
+      result++;
     }
     temp = temp->next;
   }
-  return 0;
-
-  /* mmalloc * temp = freeListHead; */
-  /* while (temp != NULL && temp->next != NULL) { */
-  /*   void * ptr1 = temp; */
-  /*   void * ptr2 = temp->next; */
-  /*   if ((ptr2 - ptr1) == temp->blockSize) { */
-  /*     --freeBlocks; */
-  /*     temp->blockSize += temp->next->blockSize; */
-  /*     mmalloc ** newPtr = &((temp->next)->next); */
-  /*     temp->next = *newPtr; */
-  /*     if (*newPtr != NULL) { */
-  /*       (*newPtr)->prev = NULL; */
-  /*       (*newPtr) = NULL; */
-  /*     } */
-  /*   } */
-  /*   temp = temp->next; */
-  /* } */
-  /* if (freeListHead->blockSize == freeBytes) { */
-  /*   freeListTail = freeListHead; */
-  /* } */
+  return result;
 }
 
-void * ff_malloc(size_t noBytes) {
-  if (freeListHead != NULL && (noBytes < ((freeListHead->blockSize) - sizeof(mmalloc)))) {
-    mmalloc * result = NULL;
-    result = freeListHead;
+/*
+  This function is responsible for adding the paramter to the free 
+  linked list.
+  It assumes that the parameter's address starts after the area 
+  occupied in this block by the metadata
+*/
 
-    /* purify(result); */
-    void * resPtr = result;
-    freeListHead = freeListHead->next;
-    return resPtr + sizeof(mmalloc);
-  }
-  else {
-    mmalloc * newNode = sbrk(noBytes + sizeof(mmalloc));
-    newNode->blockSize = noBytes + sizeof(mmalloc);
-    addToMalloc(newNode);
-    allocatedBytes += tail->blockSize;
-    void * anotherOne = tail;
-    /* printf("result is: %p", anotherOne + sizeof(mmalloc) + 1); */
-    return anotherOne + sizeof(mmalloc);
+void bf_free(void * ptrToFree) {
+  ptrToFree -= sizeof(mmalloc);
+  mmalloc * ptr = ptrToFree;
+  size_t merged;
+  merged = tryMerge(ptr);
+  /* printf("The value of merged after trying to merge %p is: %lu\n", ptrToFree, merged); */
+  if (merged == 0) {
+    ptr->next = NULL;
+    ptr->prev = fTail;
+    fTail = ptr;
+    if (fHead == NULL) {
+      fHead = fTail;
+    }
+    else {
+      fTail->prev->next = fTail;
+    }
   }
 }
 
-void ff_free(void * ptrToDeleteVoid) {
-  /* ptrToDeleteVoid -= sizeof(mmalloc); */
-  ptrToDeleteVoid -= sizeof(mmalloc);
-  mmalloc * ptrToDelete = ptrToDeleteVoid;
-  if (ptrToDelete->next == NULL && ptrToDelete->prev == NULL) {
-    head = NULL;
-    tail = NULL;
+/*
+  This function was purely made for testing purposes.
+  It will print the blocksizes and addresses of the 
+  free linked list starting from the head pointer.
+*/
+
+void printLLFront() {
+  mmalloc * temp = fHead;
+  while (temp != NULL) {
+    printf("**********%p, %lu**********\n", temp, temp->blockSize);
+    temp = temp->next;
   }
-  else if (ptrToDelete->next == NULL) {
-    tail = ptrToDelete->prev;
-    ptrToDelete->prev->next = NULL;
-    ptrToDelete->prev = NULL;
-  }
-  else if (ptrToDelete->prev == NULL) {
-    head = ptrToDelete->next;
-    ptrToDelete->next->prev = NULL;
-    ptrToDelete->next = NULL;
-  }
-  else {
-    ptrToDelete->next->prev = ptrToDelete->prev;
-    ptrToDelete->prev->next = ptrToDelete->next;
-    ptrToDelete->next = NULL;
-    ptrToDelete->prev = NULL;
-  }
-  ++freeBlocks;
-  addSortedFree(ptrToDelete);
 }
 
-/* int main() { */
-/*   void * ptr1 = bf_malloc(100); */
-/*   void * ptr2 = bf_malloc(200); */
-/*   void * ptr3 = bf_malloc(300); */
-/*   void * ptr4 = bf_malloc(400); */
-/*   void * ptr5 = bf_malloc(500); */
-/*   bf_free(ptr1); */
-/*   bf_free(ptr3); */
-/*   bf_free(ptr5); */
-/*   void * ptr6 = bf_malloc(20); */
-/*   printLLFront(head); */
-/*   void * ptr7 = bf_malloc(40); */
-/*   printLLFront(head); */
-/*   printLLFront(freeListHead); */
-/*   return 0; */
-/* } */
+/*
+  This function was purely made for testing purposes.
+  It will print the blocksizes and addresses of the 
+  free linked list starting from the tail pointer.
+*/
 
-/* printf("\t\t\tAllocated Bytes: %lu, Free Bytes: %lu\n", allocatedBytes, freeBytes); */
+void printLLBack() {
+  mmalloc * temp = fTail;
+  while (temp != NULL) {
+    printf("**********%p, %lu**********\n", temp, temp->blockSize);
+    temp = temp->prev;
+  }
+}
 
-/* size_t canMerge(mmalloc * ptr1, mmalloc * ptr2) { */
-/*   void * newPtr = ptr1; */
-/*   void * anotherPtr = ptr2; */
-/*   size_t value = 0; */
-/*   if (anotherPtr > newPtr) { */
-/*     value = anotherPtr - newPtr; */
-/*   } */
-/*   else { */
-/*     value = newPtr - anotherPtr; */
-/*   } */
-/*   return (value == ptr1->blockSize) ? 1 : 0; */
-/*   /\* mmalloc * veryNewPtr = ptr2 + sizeof(mmalloc *) + 1; *\/ */
-/*   /\* veryNewPtr->blockSize = ptr2->blockSize - (ptr2->blockSize - (sizeof(mmalloc *) + 1)); *\/ */
-/*   /\* void * ptr3 = veryNewPtr; *\/ */
-/*   /\* if (ptr3 > anotherPtr) { *\/ */
-/*   /\*   printf("HELL YES"); *\/ */
-/*   /\* } *\/ */
-/* } */
+int main() {
+  int ** newPtr = (int **)bf_malloc(40 * sizeof(int *));
+  for (size_t i = 0; i < 40; i++) {
+    printf("Mallocing %lu number of bytes\n", ((4 * (i + 1) * sizeof(int))));
+    newPtr[i] = (int *)bf_malloc((4 * (i + 1)) * sizeof(int));
+  }
+
+  for (size_t i = 0; i < 40; i++) {
+    bf_free(newPtr[i]);
+  }
+  bf_free(newPtr);
+  /* bf_free(newPtr[0]); */
+  /* bf_free(newPtr[2]); */
+  /* bf_free(newPtr[3]); */
+
+  /* bf_free(newPtr[1]); */
+  /* bf_free(newPtr); */
+  printLLFront();
+}
